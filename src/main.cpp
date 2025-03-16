@@ -17,12 +17,10 @@ void connectToWiFi()
   while (WiFi.status() != WL_CONNECTED)
   {
     WiFi.begin(ssid, password);
-    int count = 0;
-    while (WiFi.status() != WL_CONNECTED && count < 10)
+    while (WiFi.status() != WL_CONNECTED)
     {
       delay(1000);
       Serial.print(".");
-      count++;
     }
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -113,7 +111,7 @@ void loop()
       client.flush();
       Serial.println("Sent: " + pattern);
     }
-    delay(10);
+    delay(500);
   }
   if (!client.connected())
   {
