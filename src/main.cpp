@@ -1,121 +1,115 @@
 #include <WiFiNINA.h>
-#include <Arduino_LSM6DS3.h> // Library for the acceleration/accelerometer
+#include <Arduino_LSM6DS3.h>
 
-// Wi-Fi credentials (match those on the ESP32-S3)
-const char *ssid = "ESP32-AccessPoint"; // Wi-Fi SSID
-const char *password = "password123";   // Wi-Fi password
-
-const char *host = "192.168.4.1"; // ESP32-S3 Access Point IP
-const int port = 12345;           // Port number of the server
+// Wi-Fi Configuration
+const char *ssid = "ESP32S3_AP";      // Replace with your ESP32-S3 AP SSID
+const char *password = "123456789";   // Replace with your ESP32-S3 AP password
+const char *serverIP = "192.168.4.1"; // Replace with the ESP32-S3's IP address
 
 WiFiClient client;
 
-void connectToWiFi()
-{
-  Serial.println("Connecting to Wi-Fi...");
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      delay(1000);
-      Serial.print(".");
-    }
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      Serial.println("Wi-Fi connected!");
-      Serial.print("IP Address: ");
-      Serial.println(WiFi.localIP());
-    }
-    else
-    {
-      Serial.println("Failed to connect. Retrying...");
-    }
-  }
-
-  // Connect to the ESP32-S3 server
-  if (client.connect(host, port))
-  {
-    Serial.println("Connected to the server!");
-  }
-  else
-  {
-    Serial.println("Failed to connect to the server!");
-  }
-}
+// Function Prototypes
+void connectToWiFi();
+void sendCommand(String command);
+String lastReceivedString = "off";
 
 void setup()
 {
-  // Initialize serial communication
   Serial.begin(115200);
-  while (!Serial)
-    ;
 
-  // Initialize Wi-Fi connection
-  connectToWiFi();
-
-  // Initialize IMU
+  // Initialize the accelerometer
   if (!IMU.begin())
   {
     Serial.println("Failed to initialize IMU!");
     while (1)
       ;
   }
-  Serial.println("IMU initialized.");
+
+  // Connect to Wi-Fi
+  connectToWiFi();
 }
 
 void loop()
 {
-  // Send the pattern to the ESP32-S3
-  while (client.connected() && IMU.accelerationAvailable())
+  // Read accelerometer data
+  float x, y, z;
+  while (IMU.accelerationAvailable())
   {
-    // Variables to store acceleration readings
-    float x, y, z;
-
-    // Read acceleration values
     IMU.readAcceleration(x, y, z);
-    String pattern;
-    if (x > 0.5)
+
+    // Determine the tilt direction
+    String command = "off"; // Default command
+    if (x < -0.5)
     {
-      pattern = "down";
-      client.println(pattern);
-      client.flush();
-      Serial.println("Sent: " + pattern);
+      command = "up";
     }
-    else if (x < -0.5)
+    else if (x > 0.5)
     {
-      pattern = "up";
-      client.println(pattern);
-      client.flush();
-      Serial.println("Sent: " + pattern);
-    }
-    else if (y > 0.5)
-    {
-      pattern = "left";
-      client.println(pattern);
-      client.flush();
-      Serial.println("Sent: " + pattern);
+      command = "down";
     }
     else if (y < -0.5)
     {
-      pattern = "right";
-      client.println(pattern);
-      client.flush();
-      Serial.println("Sent: " + pattern);
+      command = "right";
     }
-    else if (x <= 0.5 && x >= -0.5 && y <= 0.5 && y >= -0.5)
+    else if (y > 0.5)
     {
-      pattern = "off";
-      client.println(pattern);
-      client.flush();
-      Serial.println("Sent: " + pattern);
+      command = "left";
     }
-    delay(500);
+
+    if (lastReceivedString != command)
+    {
+      // Send the command to the ESP32-S3
+      sendCommand(command);
+      lastReceivedString = command;
+      // Print the accelerometer data and command for debugging
+      Serial.print("X: ");
+      Serial.print(x);
+      Serial.print(" | Y: ");
+      Serial.print(y);
+      Serial.print(" | Command: ");
+      Serial.println(command);
+    }
   }
-  if (!client.connected())
+}
+
+void connectToWiFi()
+{
+  Serial.print("Connecting to Wi-Fi...");
+  while (WiFi.begin(ssid, password) != WL_CONNECTED)
   {
-    Serial.println("Disconnected from the server, reconnecting...");
-    connectToWiFi();
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("\nConnected to Wi-Fi!");
+}
+
+void sendCommand(String command)
+{
+  if (client.connect(serverIP, 80))
+  {
+    // Send an HTTP GET request
+    client.print("GET /");
+    client.print(command);
+    client.println(" HTTP/1.1");
+    client.print("Host: ");
+    client.println(serverIP);
+    client.println("Connection: close");
+    client.println();
+
+    // Wait for the response (optional)
+    while (client.connected())
+    {
+      if (client.available())
+      {
+        String line = client.readStringUntil('\r');
+        Serial.print(line);
+      }
+    }
+
+    client.stop(); // Close the connection
+  }
+  else
+  {
+    Serial.println("Failed to connect to ESP32-S3!");
   }
 }
