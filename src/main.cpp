@@ -73,19 +73,19 @@ void handleIMUData()
 
     // Determine the tilt direction
     const char *command = "off"; // Default command
-    if (x < -0.5)
+    if (x < -0.35)
     {
       command = "up";
     }
-    else if (x > 0.5)
+    else if (x > 0.35)
     {
       command = "down";
     }
-    else if (y < -0.5)
+    else if (y < -0.35)
     {
       command = "right";
     }
-    else if (y > 0.5)
+    else if (y > 0.35)
     {
       command = "left";
     }
