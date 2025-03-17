@@ -43,7 +43,7 @@ void connectToWiFi()
   WiFi.begin(ssid, password);
 
   int retryCount = 0;
-  while (WiFi.status() != WL_CONNECTED && retryCount < 5)
+  while (WiFi.status() != WL_CONNECTED && retryCount < 3)
   {
     Serial.print(".");
     delay(1000);
@@ -113,6 +113,7 @@ void sendCommand(const char *command)
 
   if (client.connect(serverIP, 80))
   {
+    client.setTimeout(100);
     // Send an HTTP GET request
     client.println(command);
     client.stop(); // Close the connection
