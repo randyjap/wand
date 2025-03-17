@@ -10,8 +10,11 @@ WiFiClient client;
 
 // Function Prototypes
 void connectToWiFi();
-void sendCommand(String command);
-String lastReceivedString = "off";
+void sendCommand(const char *command);
+void handleIMUData();
+
+const char *lastSentCommand = "off";
+volatile bool isSending = false; // Mutex-like variable to prevent race conditions
 
 void setup()
 {
@@ -22,7 +25,7 @@ void setup()
   {
     Serial.println("Failed to initialize IMU!");
     while (1)
-      ;
+      ; // Halt execution if IMU initialization fails
   }
 
   // Connect to Wi-Fi
@@ -31,14 +34,45 @@ void setup()
 
 void loop()
 {
-  // Read accelerometer data
+  handleIMUData();
+}
+
+void connectToWiFi()
+{
+  Serial.print("Connecting to Wi-Fi...");
+  WiFi.begin(ssid, password);
+
+  int retryCount = 0;
+  while (WiFi.status() != WL_CONNECTED && retryCount < 5)
+  {
+    Serial.print(".");
+    delay(1000);
+    retryCount++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("\nConnected to Wi-Fi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    Serial.println("\nFailed to connect to Wi-Fi. Restarting...");
+    NVIC_SystemReset(); // Restart the device if Wi-Fi connection fails
+  }
+}
+
+void handleIMUData()
+{
   float x, y, z;
+
   while (IMU.accelerationAvailable())
   {
     IMU.readAcceleration(x, y, z);
 
     // Determine the tilt direction
-    String command = "off"; // Default command
+    const char *command = "off"; // Default command
     if (x < -0.5)
     {
       command = "up";
@@ -56,60 +90,38 @@ void loop()
       command = "left";
     }
 
-    if (lastReceivedString != command)
+    if (lastSentCommand != command)
     {
       // Send the command to the ESP32-S3
       sendCommand(command);
-      lastReceivedString = command;
-      // Print the accelerometer data and command for debugging
-      Serial.print("X: ");
-      Serial.print(x);
-      Serial.print(" | Y: ");
-      Serial.print(y);
-      Serial.print(" | Command: ");
-      Serial.println(command);
+      lastSentCommand = command;
     }
+    delay(50);
   }
 }
 
-void connectToWiFi()
+void sendCommand(const char *command)
 {
-  Serial.print("Connecting to Wi-Fi...");
-  while (WiFi.begin(ssid, password) != WL_CONNECTED)
+  // Check if another command is being sent
+  if (isSending)
   {
-    Serial.print(".");
-    delay(1000);
+    Serial.println("Command sending in progress. Skipping...");
+    return;
   }
-  Serial.println("\nConnected to Wi-Fi!");
-}
 
-void sendCommand(String command)
-{
+  isSending = true; // Lock the mutex
+
   if (client.connect(serverIP, 80))
   {
     // Send an HTTP GET request
-    client.print("GET /");
-    client.print(command);
-    client.println(" HTTP/1.1");
-    client.print("Host: ");
-    client.println(serverIP);
-    client.println("Connection: close");
-    client.println();
-
-    // Wait for the response (optional)
-    while (client.connected())
-    {
-      if (client.available())
-      {
-        String line = client.readStringUntil('\r');
-        Serial.print(line);
-      }
-    }
-
+    client.println(command);
     client.stop(); // Close the connection
+    Serial.println("Sent " + String(command));
   }
   else
   {
     Serial.println("Failed to connect to ESP32-S3!");
   }
+
+  isSending = false; // Unlock the mutex
 }
